@@ -43,30 +43,31 @@ This repository includes examples demonstrating how to use PIPNs for solving PDE
 ```julia
 using Flux
 
-# Define shared MLP layers
-shared_mlp1 = Flux.Chain(
-    Dense(2, 64, tanh),
-    Dense(64, 64, tanh)
-)
+Dt = Differential(t)
+Dxx = Differential(x)^2
+eq = Dt(u(x,t)) ~ Dxx(u(x,t))
 
-# Define the PointNet model
-function pointnet_model(points)
-    points = apply_shared_mlp(shared_mlp1, points)
-    global_feature = aggregate_global_feature(points)
-    combined_features = after_pool_mlp(global_feature)
-    return final_layer(combined_features)
-end
+# Define domain
+x_min = 0.0
+x_max = 1.0
+t_min = 0.0
+t_max = 1.0
 
-# Training loop (sample)
-for epoch in 1:num_epochs
-    for (input, target) in final_dataset
-        gs = Flux.gradient(Flux.params(shared_mlp1, after_pool_mlp, final_layer)) do
-            predictions = pointnet_model(input)
-            loss = loss_fn(target, predictions)
-        end
-        Flux.Optimise.update!(optimizer, Flux.params(shared_mlp1, after_pool_mlp, final_layer), gs)
-    end
-end
+# Use DomainSets for domain definition
+domains = [x ∈ Interval(x_min, x_max),
+          t ∈ Interval(t_min, t_max)]
+
+bcs = [u(x,0) ~ sin(π*x),
+      u(0,t) ~ 0.0,
+      u(1,t) ~ 0.0]
+
+@named pde_system = PDESystem(eq, bcs, domains, [x,t], [u(x,t)])
+
+chain = Lux.Chain(Lux.Dense(2 => 16, tanh), Lux.Dense(16 => 1))
+strategy = GridTraining(0.1)
+discretization = PhysicsInformedNN(chain, strategy)
+
+prob = discretize(pde_system, discretization)
 ```
 
 For more examples and detailed explanations, refer to the [documentation](https://github.com/ka-bear/NeuralPDE.jl/docs).
